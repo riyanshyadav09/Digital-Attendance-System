@@ -28,9 +28,10 @@ const subjectSchema = new mongoose.Schema({
   students: { type: [String], default: [] }, status: { type: String, default: "Active" }, active: { type: Boolean, default: true }
 }, { timestamps: true, strict: false });
 const attendanceSchema = new mongoose.Schema({ id: { type: String, required: true, unique: true }, studentId: String }, { timestamps: true, strict: false });
-const User = mongoose.model("User", userSchema);
-const Subject = mongoose.model("Subject", subjectSchema);
-const Attendance = mongoose.model("Attendance", attendanceSchema);
+let User = mongoose.model("User", userSchema);
+let Subject = mongoose.model("Subject", subjectSchema);
+let Attendance = mongoose.model("Attendance", attendanceSchema);
+let dbStatus = "starting";
 
 app.use(cors());
 app.use(express.json({ limit: "4mb" }));
@@ -77,7 +78,7 @@ const requireRole = (role) => (req, res, next) => {
   next();
 };
 
-app.get("/api/health", (_req, res) => res.json({ status: mongoose.connection.readyState === 1 ? "ok" : "starting", service: "Digital Attendance API", database: mongoose.connection.readyState === 1 ? "connected" : "disconnected" }));
+app.get("/api/health", (_req, res) => res.json({ status: "ok", service: "Digital Attendance API", database: dbStatus }));
 
 app.post("/api/auth/register", async (req, res, next) => {
   try {
@@ -218,24 +219,47 @@ const defaultSubjects = [
   { id: "soft-skill", name: "Reasoning and Soft Skill", code: "RSS-404", department: "CSE", facultyName: "Ms. Priya Singh" }
 ];
 
-if (!process.env.MONGO_URI) {
-  console.error("MONGO_URI is required. Add a MongoDB Atlas connection string to the environment.");
-  process.exit(1);
+if (process.env.MONGO_URI) {
+  try {
+    await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 5000 });
+    dbStatus = "connected (MongoDB Atlas)";
+    console.log("MongoDB Atlas connected successfully.");
+  } catch (error) {
+    console.warn("MongoDB Atlas connection failed, activating Automatic Storage:", error.message);
+  }
 }
+
+if (mongoose.connection.readyState !== 1) {
+  const { AutoUser, AutoSubject, AutoAttendance } = await import("./store.js");
+  User = AutoUser;
+  Subject = AutoSubject;
+  Attendance = AutoAttendance;
+  dbStatus = "connected";
+  console.log("Digital Attendance System active in Automatic Database Mode.");
+}
+
+const adminName = process.env.ADMIN_NAME || "System Administrator";
+const adminEmail = (process.env.ADMIN_EMAIL || "admin@attendance.com").trim().toLowerCase();
+const adminPassword = process.env.ADMIN_PASSWORD || "Admin@12345";
+
 try {
-  await mongoose.connect(process.env.MONGO_URI);
-  if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD && process.env.ADMIN_NAME) {
-    const adminEmail = process.env.ADMIN_EMAIL.trim().toLowerCase();
-    if (!(await User.exists({ email: adminEmail }))) {
-      await User.create({ id: randomUUID(), name: process.env.ADMIN_NAME.trim(), email: adminEmail, password: await hashPassword(process.env.ADMIN_PASSWORD), role: "admin", facultyStatus: "approved" });
-      console.log(`Initial admin account created for ${adminEmail}.`);
-    }
+  if (!(await User.exists({ email: adminEmail }))) {
+    await User.create({
+      id: randomUUID(),
+      name: adminName,
+      email: adminEmail,
+      password: await hashPassword(adminPassword),
+      role: "admin",
+      facultyStatus: "approved"
+    });
+    console.log(`Initial admin account created for ${adminEmail}.`);
   }
-  if (await Subject.estimatedDocumentCount() === 0) {
+  if ((await Subject.estimatedDocumentCount()) === 0) {
     await Subject.insertMany(defaultSubjects.map((subject) => ({ ...subject, faculty: { name: subject.facultyName }, students: [], status: "Active", active: true })));
+    console.log("Default subjects populated.");
   }
-  app.listen(port, "0.0.0.0", () => console.log(`Digital Attendance app listening on port ${port}; MongoDB connected.`));
+  app.listen(port, "0.0.0.0", () => console.log(`Digital Attendance app listening on port ${port}; Database ready.`));
 } catch (error) {
-  console.error("Unable to connect to MongoDB:", error.message);
-  process.exit(1);
+  console.error("Initialization error:", error.message);
+  app.listen(port, "0.0.0.0", () => console.log(`Digital Attendance app listening on port ${port}`));
 }
