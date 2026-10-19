@@ -54,13 +54,17 @@ app.get("/", (req, res) => {
     res.send("Face Attendance Backend is Running!");
 });
 
-app.get("/health", (req, res) => {
+const healthHandler = (req, res) => {
     const connected = mongoose.connection.readyState === 1;
     return res.status(connected ? 200 : 503).json({
         status: connected ? "ok" : "starting",
+        service: "Digital Attendance API",
         database: connected ? "connected" : "unavailable"
     });
-});
+};
+
+app.get("/health", healthHandler);
+app.get("/api/health", healthHandler);
 
 app.use((req, res) => res.status(404).json({ message: "Not found." }));
 
