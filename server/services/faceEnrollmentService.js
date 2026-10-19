@@ -1,16 +1,6 @@
 const axios = require("axios");
 const FormData = require("form-data");
-const { getFaceServiceUrl } = require("../config/faceService");
-
-const DEFAULT_FACE_SERVICE_TIMEOUT_MS = 120000;
-
-const getFaceServiceTimeout = () => {
-    const configuredTimeout = Number(process.env.FACE_SERVICE_TIMEOUT_MS);
-    if (!Number.isFinite(configuredTimeout) || configuredTimeout <= 0) {
-        return DEFAULT_FACE_SERVICE_TIMEOUT_MS;
-    }
-    return Math.min(configuredTimeout, 150000);
-};
+const { getFaceServiceUrl, getFaceServiceTimeoutMs } = require("../config/faceService");
 
 const enrollFaceImage = async (file, requestId = "untracked") => {
     const formData = new FormData();
@@ -19,7 +9,7 @@ const enrollFaceImage = async (file, requestId = "untracked") => {
         contentType: file.mimetype
     });
 
-    const timeout = getFaceServiceTimeout();
+    const timeout = getFaceServiceTimeoutMs();
     const startedAt = Date.now();
     console.info("Face service enrollment request started", {
         requestId,
@@ -78,17 +68,25 @@ const enrollFaceImage = async (file, requestId = "untracked") => {
     }
 
     const embedding = response.data?.embedding;
+    const modelName = response.data?.modelName;
+    const modelId = response.data?.modelId;
     if (
         !Array.isArray(embedding) ||
         embedding.length !== 512 ||
-        !embedding.every((value) => Number.isFinite(Number(value)))
+        !embedding.every((value) => Number.isFinite(Number(value))) ||
+        !["buffalo_l", "buffalo_sc"].includes(modelName) ||
+        typeof modelId !== "string" ||
+        !modelId.startsWith(`${modelName}@insightface-`)
     ) {
-        const error = new Error("Invalid face embedding received from AI service.");
+        const error = new Error("Invalid face embedding or model identity received from AI service.");
         error.status = 502;
         throw error;
     }
 
-    return embedding.map(Number);
+    return {
+        embedding: embedding.map(Number),
+        modelId
+    };
 };
 
 module.exports = enrollFaceImage;

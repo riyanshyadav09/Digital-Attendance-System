@@ -37,6 +37,11 @@ const userSchema = new mongoose.Schema(
          default: null
          },
 
+        faceEmbeddingModel: {
+            type: String,
+            default: null
+        },
+
         facePhotoUrl: {
             type: String,
             default: null

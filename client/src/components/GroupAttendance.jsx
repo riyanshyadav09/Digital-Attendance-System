@@ -16,6 +16,17 @@ function GroupAttendance() {
 
     const [capturedImage, setCapturedImage] =
         useState(null);
+    const [groupPhotoFile, setGroupPhotoFile] = useState(null);
+    const [sectionLabel, setSectionLabel] = useState("");
+    const [photoSessions, setPhotoSessions] = useState([]);
+    const [savingPhotoSession, setSavingPhotoSession] = useState(false);
+    const [photoUploadProgress, setPhotoUploadProgress] = useState(0);
+    const uploadKeyRef = useRef(null);
+
+    useEffect(() => {
+        if (!capturedImage?.startsWith("blob:")) return undefined;
+        return () => URL.revokeObjectURL(capturedImage);
+    }, [capturedImage]);
 
     const [studentAttendance, setStudentAttendance] =
         useState({});
@@ -62,6 +73,26 @@ function GroupAttendance() {
             stopCamera();
         };
     }, []);
+
+    useEffect(() => {
+        if (!selectedSubjectId) {
+            setPhotoSessions([]);
+            return undefined;
+        }
+
+        let active = true;
+        const token = localStorage.getItem("token");
+        axios.get(`${API_BASE_URL}/attendance/group-photo-sessions`, {
+            params: { subjectId: selectedSubjectId },
+            headers: { Authorization: `Bearer ${token}` }
+        }).then((response) => {
+            if (active) setPhotoSessions(response.data.sessions || []);
+        }).catch((requestError) => {
+            if (active) setError(requestError.response?.data?.message || "Unable to load saved photo sessions.");
+        });
+
+        return () => { active = false; };
+    }, [selectedSubjectId]);
 
 
     const fetchSubjects = async () => {
@@ -123,6 +154,9 @@ function GroupAttendance() {
         setSelectedSubjectId(subjectId);
 
         setCapturedImage(null);
+        setGroupPhotoFile(null);
+        setSectionLabel("");
+        uploadKeyRef.current = null;
         setStudentAttendance({});
         setMessage("");
         setError("");
@@ -414,6 +448,7 @@ function GroupAttendance() {
 
 
         setCapturedImage(image);
+        setGroupPhotoFile(null);
 
         setMessage(
             "Group photo captured successfully."
@@ -431,6 +466,7 @@ function GroupAttendance() {
 
     const retakePhoto = async () => {
         setCapturedImage(null);
+        setGroupPhotoFile(null);
         setMessage("");
         setError("");
 
@@ -446,9 +482,112 @@ function GroupAttendance() {
         stopCamera();
 
         setCapturedImage(null);
+        setGroupPhotoFile(null);
+        uploadKeyRef.current = null;
 
         setMessage("");
         setError("");
+    };
+
+    const handleGroupPhotoUpload = (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file) return;
+
+        const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+        if (!allowedTypes.includes(file.type)) {
+            setError("Choose a JPG, PNG, or WEBP group photo.");
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            setError("Group photo must be 5 MB or smaller.");
+            return;
+        }
+
+        stopCamera();
+        setGroupPhotoFile(file);
+        setCapturedImage(URL.createObjectURL(file));
+        setRecognitionResults([]);
+        setRecognitionDone(false);
+        setMessage("");
+        setError("");
+        uploadKeyRef.current = null;
+    };
+
+    const saveGroupPhotoSession = async () => {
+        if (!selectedSubjectId || !capturedImage) {
+            setError("Select a subject and capture or upload a group photo first.");
+            return;
+        }
+
+        try {
+            setSavingPhotoSession(true);
+            setPhotoUploadProgress(0);
+            setError("");
+            setMessage("");
+
+            let photoFile = groupPhotoFile;
+            if (!photoFile) {
+                const response = await fetch(capturedImage);
+                const blob = await response.blob();
+                photoFile = new File([blob], `group-photo-${Date.now()}.jpg`, { type: "image/jpeg" });
+            }
+
+            if (photoFile.size > 5 * 1024 * 1024) {
+                throw new Error("Group photo must be 5 MB or smaller.");
+            }
+            if (!uploadKeyRef.current) uploadKeyRef.current = crypto.randomUUID();
+
+            const formData = new FormData();
+            formData.append("subjectId", selectedSubjectId);
+            formData.append("section", sectionLabel.trim());
+            formData.append("idempotencyKey", uploadKeyRef.current);
+            formData.append("groupPhoto", photoFile, photoFile.name || "group-photo.jpg");
+
+            const token = localStorage.getItem("token");
+            const response = await axios.post(
+                `${API_BASE_URL}/attendance/group-photo-sessions`,
+                formData,
+                {
+                    headers: { Authorization: `Bearer ${token}` },
+                    onUploadProgress: (event) => {
+                        if (event.total) {
+                            setPhotoUploadProgress(Math.round((event.loaded * 100) / event.total));
+                        }
+                    }
+                }
+            );
+
+            const savedSession = response.data.session;
+            setPhotoSessions((previous) => [
+                savedSession,
+                ...previous.filter((item) => item.id !== savedSession.id)
+            ]);
+            uploadKeyRef.current = null;
+            setMessage(response.data.message || "Photo session saved. No student attendance was marked.");
+        } catch (requestError) {
+            setError(requestError.response?.data?.message || requestError.message || "Unable to save this photo session. You can safely retry.");
+        } finally {
+            setSavingPhotoSession(false);
+        }
+    };
+
+    const markPhotoSessionReviewed = async (sessionId) => {
+        try {
+            const token = localStorage.getItem("token");
+            const response = await axios.put(
+                `${API_BASE_URL}/attendance/group-photo-sessions/${sessionId}/review`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            setPhotoSessions((previous) => previous.map((session) =>
+                session.id === sessionId ? response.data.session : session
+            ));
+            setMessage(response.data.message);
+            setError("");
+        } catch (requestError) {
+            setError(requestError.response?.data?.message || "Unable to update the photo session review.");
+        }
     };
 
     const recognizeGroupPhoto = async () => {
@@ -531,13 +670,17 @@ function GroupAttendance() {
         setRecognitionDone(true);
 
         if (response.data.recognizedCount > 0) {
+            const reEnrollmentNotice = response.data.reEnrollmentRequiredCount
+                ? ` ${response.data.reEnrollmentRequiredCount} student(s) must re-enroll their face for the active model.`
+                : "";
             setMessage(
-                `${response.data.recognizedCount} student(s) recognized successfully.`
+                `${response.data.recognizedCount} student(s) recognized successfully.${reEnrollmentNotice}`
             );
         } else {
-            setMessage(
-                "No enrolled students were recognized."
-            );
+            const reEnrollmentRequiredCount = response.data.reEnrollmentRequiredCount || 0;
+            setMessage(reEnrollmentRequiredCount
+                ? `No enrolled students were recognized. ${reEnrollmentRequiredCount} student(s) must re-enroll their face for the active model.`
+                : "No enrolled students were recognized.");
         }
 
     } catch (error) {
@@ -951,6 +1094,46 @@ function GroupAttendance() {
                     </div>
                 )}
 
+                {selectedSubjectId && (
+                    <label className="input-group" style={{ maxWidth: "420px", marginTop: "16px" }}>
+                        <span>Section (optional)</span>
+                        <input
+                            type="text"
+                            value={sectionLabel}
+                            onChange={(event) => setSectionLabel(event.target.value.slice(0, 80))}
+                            placeholder="e.g. A or CSE-2"
+                            maxLength={80}
+                        />
+                    </label>
+                )}
+
+                {selectedSubjectId && photoSessions.length > 0 && (
+                    <div className="no-pending" style={{ marginTop: "18px" }}>
+                        <h3>Saved group photo sessions</h3>
+                        <div style={{ display: "grid", gap: "12px" }}>
+                            {photoSessions.map((session) => (
+                                <article key={session.id} style={{ display: "flex", gap: "14px", alignItems: "center", flexWrap: "wrap" }}>
+                                    <img
+                                        src={session.groupPhotoUrl}
+                                        alt={`Group photo for ${session.subjectName}`}
+                                        style={{ width: "120px", height: "90px", objectFit: "cover", borderRadius: "10px" }}
+                                    />
+                                    <div style={{ flex: "1 1 220px" }}>
+                                        <strong>{session.subjectName} ({session.subjectCode})</strong>
+                                        <div>{session.section ? `Section ${session.section} · ` : ""}{new Date(session.date).toLocaleString()}</div>
+                                        <div>Review status: {session.reviewStatus}</div>
+                                    </div>
+                                    {session.reviewStatus === "Pending" && (
+                                        <button type="button" className="approve-btn" onClick={() => markPhotoSessionReviewed(session.id)}>
+                                            Mark reviewed
+                                        </button>
+                                    )}
+                                </article>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
             </div>
 
 
@@ -965,6 +1148,19 @@ function GroupAttendance() {
                     <h3>
                         2. Capture Group Photo
                     </h3>
+
+                    <p>Capture or upload one clear JPG, PNG, or WEBP photo with up to 20 students (maximum 5 MB).</p>
+
+                    <label className="approve-btn" style={{ display: "inline-flex", alignItems: "center", minHeight: "44px", cursor: "pointer", marginBottom: "12px" }}>
+                        Upload group photo
+                        <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            onChange={handleGroupPhotoUpload}
+                            style={{ position: "absolute", width: "1px", height: "1px", opacity: 0, overflow: "hidden" }}
+                            aria-label="Upload group photo"
+                        />
+                    </label>
 
 
                     {/* ==========================================
@@ -1129,6 +1325,25 @@ function GroupAttendance() {
 
 
                     {/* FACE RECOGNITION NOTICE */}
+<div className="no-pending">
+    <h3>Save photo session</h3>
+    <p>Save the group photo and session details without running face recognition or marking any students present.</p>
+    <button
+        type="button"
+        className="approve-btn"
+        onClick={saveGroupPhotoSession}
+        disabled={savingPhotoSession}
+    >
+        {savingPhotoSession ? `Uploading ${photoUploadProgress}%` : "Save Photo Session"}
+    </button>
+    {savingPhotoSession && (
+        <div role="status" aria-live="polite" style={{ marginTop: "10px" }}>
+            <progress value={photoUploadProgress} max="100" style={{ width: "min(100%, 360px)" }} />
+            <span style={{ marginLeft: "8px" }}>{photoUploadProgress}%</span>
+        </div>
+    )}
+</div>
+
 <div className="no-pending">
     <h3>🤖 AI Face Recognition</h3>
 

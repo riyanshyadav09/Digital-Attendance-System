@@ -102,10 +102,11 @@ const enrollFace = async (req, res) => {
         });
 
         stage = "InsightFace enrollment";
-        const embedding = await enrollFaceImage(req.file, req.requestId);
+        const enrolledFace = await enrollFaceImage(req.file, req.requestId);
 
         stage = "MongoDB user save";
-        user.faceEmbedding = embedding;
+        user.faceEmbedding = enrolledFace.embedding;
+        user.faceEmbeddingModel = enrolledFace.modelId;
         user.facePhotoUrl = savedPhoto.url;
 
         await user.save();
@@ -113,14 +114,16 @@ const enrollFace = async (req, res) => {
         console.info("Face re-enrollment processing completed", {
             requestId: req.requestId,
             elapsedMs: Date.now() - startedAt,
-            embeddingLength: embedding.length
+            embeddingLength: enrolledFace.embedding.length,
+            embeddingModel: enrolledFace.modelId
         });
         await removeStoredImage(previousFacePhotoUrl);
 
         return res.status(200).json({
             message: "Face enrolled successfully.",
             faceEnrolled: true,
-            facePhotoUrl: user.facePhotoUrl
+            facePhotoUrl: user.facePhotoUrl,
+            faceEmbeddingModel: user.faceEmbeddingModel
         });
 
     } catch (error) {

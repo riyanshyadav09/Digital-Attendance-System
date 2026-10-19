@@ -103,9 +103,7 @@ const validateEnvironment = () => {
     const required = [
         "MONGO_URI", "JWT_SECRET", "CLIENT_URL", "FACE_SERVICE_URL", "FACE_SERVICE_TOKEN",
         "CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET",
-        "CAMPUS_LATITUDE", "CAMPUS_LONGITUDE", "CAMPUS_RADIUS",
-        "BREVO_SMTP_HOST", "BREVO_SMTP_PORT", "BREVO_SMTP_USER", "BREVO_SMTP_KEY",
-        "BREVO_FROM_EMAIL", "BREVO_FROM_NAME"
+        "CAMPUS_LATITUDE", "CAMPUS_LONGITUDE", "CAMPUS_RADIUS"
     ];
     const missing = required.filter((name) => !process.env[name]?.trim());
     if (missing.length) {
@@ -139,9 +137,9 @@ const validateEnvironment = () => {
     const faceServiceUrl = new URL(process.env.FACE_SERVICE_URL);
     if (
         process.env.NODE_ENV === "production" &&
-        ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(faceServiceUrl.hostname.toLowerCase())
+        ["0.0.0.0", "::"].includes(faceServiceUrl.hostname.toLowerCase())
     ) {
-        throw new Error("FACE_SERVICE_URL must point to the deployed face service in production.");
+        throw new Error("FACE_SERVICE_URL must not use an unspecified bind address in production.");
     }
     if (!["CAMPUS_LATITUDE", "CAMPUS_LONGITUDE", "CAMPUS_RADIUS"].every(
         (name) => Number.isFinite(Number(process.env[name]))
@@ -154,8 +152,9 @@ const startServer = async () => {
     validateEnvironment();
     await connectDB();
     const port = Number(process.env.PORT) || 10000;
-    const server = app.listen(port, "0.0.0.0", () => {
-        console.log(`Backend listening on 0.0.0.0:${port}`);
+    const host = process.env.HOST?.trim() || "0.0.0.0";
+    const server = app.listen(port, host, () => {
+        console.log(`Backend listening on ${host}:${port}`);
     });
 
     const shutdown = (signal) => {
@@ -170,7 +169,11 @@ const startServer = async () => {
     process.once("SIGINT", () => shutdown("SIGINT"));
 };
 
-startServer().catch((error) => {
-    console.error("Backend startup failed:", error.message);
-    process.exit(1);
-});
+if (require.main === module) {
+    startServer().catch((error) => {
+        console.error("Backend startup failed:", error.message);
+        process.exit(1);
+    });
+}
+
+module.exports = { validateEnvironment };

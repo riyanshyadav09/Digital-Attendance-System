@@ -19,6 +19,11 @@ const {
     verifySelfie,
     recognizeGroupPhoto
 } = require("../controllers/attendanceController");
+const {
+    createGroupPhotoSession,
+    getGroupPhotoSessions,
+    markGroupPhotoSessionReviewed
+} = require("../controllers/groupPhotoSessionController");
 
 
 // ======================================================
@@ -41,6 +46,31 @@ router.post(
     facultyStatusMiddleware,
     upload.single("groupPhoto"),
     recognizeGroupPhoto
+);
+
+// Photo-session storage is intentionally independent of face recognition.
+router.post(
+    "/group-photo-sessions",
+    protect,
+    authorizeRoles("faculty", "admin"),
+    facultyStatusMiddleware,
+    upload.single("groupPhoto"),
+    createGroupPhotoSession
+);
+
+router.get(
+    "/group-photo-sessions",
+    protect,
+    authorizeRoles("faculty", "admin"),
+    getGroupPhotoSessions
+);
+
+router.put(
+    "/group-photo-sessions/:id/review",
+    protect,
+    authorizeRoles("faculty", "admin"),
+    facultyStatusMiddleware,
+    markGroupPhotoSessionReviewed
 );
 
 

@@ -1,0 +1,12 @@
+{
+  "name": "digital-attendance-system",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "start": "npm start --prefix server",
+    "build": "npm ci --prefix server",
+    "test": "npm test --prefix server",
+    "client:dev": "npm run dev --prefix client",
+    "server:dev": "npm run dev --prefix server"
+  }
+}

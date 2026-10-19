@@ -6,7 +6,7 @@ const enrollFaceImage = require("../services/faceEnrollmentService");
 const { saveFacePhoto, removeStoredImage } = require("../services/objectStorageService");
 const getSafeErrorDetails = require("../utils/safeErrorDetails");
 
-const { sendOTPEmail } = require("../services/emailService");
+const { isSmtpConfigured, sendOTPEmail } = require("../services/emailService");
 
 // ======================================================
 // REGISTER USER
@@ -69,6 +69,7 @@ const registerUser = async (req, res) => {
         }
 
         let faceEmbedding = null;
+        let faceEmbeddingModel = null;
         let facePhotoUrl = null;
         if (requestedRole === "student") {
             if (!req.file) {
@@ -88,7 +89,9 @@ const registerUser = async (req, res) => {
 
             try {
                 stage = "InsightFace enrollment";
-                faceEmbedding = await enrollFaceImage(req.file, req.requestId);
+                const enrolledFace = await enrollFaceImage(req.file, req.requestId);
+                faceEmbedding = enrolledFace.embedding;
+                faceEmbeddingModel = enrolledFace.modelId;
             } catch (error) {
                 const status = Number(error.statusCode || error.status) || 502;
                 console.error("Registration face enrollment failed", {
@@ -136,6 +139,7 @@ const registerUser = async (req, res) => {
                 ? department.trim()
                 : null,
             faceEmbedding,
+            faceEmbeddingModel,
             facePhotoUrl,
             facultyStatus,
             facultyRegisteredAt,
@@ -328,6 +332,14 @@ const forgotPassword = async (req, res) => {
             });
         }
 
+        // Check before looking up the account or creating an OTP so every
+        // address receives the same unavailable response when SMTP is absent.
+        if (!isSmtpConfigured()) {
+            return res.status(503).json({
+                message: "Password reset email is temporarily unavailable. Please try again later."
+            });
+        }
+
         const normalizedEmail =
             email.trim().toLowerCase();
 
@@ -384,10 +396,9 @@ const forgotPassword = async (req, res) => {
 
     } catch (error) {
 
-        console.error(
-            "Forgot Password Error:",
-            error.message
-        );
+        console.error("Forgot Password Error:", {
+            errorName: error.name || "Error"
+        });
 
         return res.status(500).json({
             message:

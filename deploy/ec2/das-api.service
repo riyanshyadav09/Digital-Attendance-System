@@ -1,0 +1,26 @@
+[Unit]
+Description=Digital Attendance Express API
+After=network-online.target das-face.service
+Wants=network-online.target das-face.service
+
+[Service]
+Type=simple
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/home/ec2-user/digital-attendance-system/server
+EnvironmentFile=/etc/das-attendance/server.env
+Environment=HOST=127.0.0.1
+Environment=PORT=5000
+ExecStart=/usr/bin/node /home/ec2-user/digital-attendance-system/server/server.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

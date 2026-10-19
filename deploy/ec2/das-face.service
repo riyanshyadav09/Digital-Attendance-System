@@ -1,0 +1,28 @@
+[Unit]
+Description=Digital Attendance Face Recognition Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/home/ec2-user/digital-attendance-system/face-service
+EnvironmentFile=/etc/das-attendance/face.env
+Environment=FACE_MODEL_NAME=buffalo_sc
+Environment=FACE_INFERENCE_THREADS=1
+Environment=HOME=/var/lib/das-face
+StateDirectory=das-face
+ExecStart=/home/ec2-user/digital-attendance-system/face-service/venv311/bin/uvicorn app:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

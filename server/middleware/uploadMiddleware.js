@@ -30,11 +30,12 @@ const fileFilter = (req, file, cb) => {
         allowedExtensions.includes(extension);
 
 
-    // Accept if either MIME type OR extension is valid
-    if (isValidMimeType || isValidExtension) {
+    if (isValidMimeType && isValidExtension) {
         cb(null, true);
     } else {
-        cb(new Error("Only image files are allowed."));
+        const error = new Error("Only JPG, PNG, and WEBP images are allowed.");
+        error.statusCode = 400;
+        cb(error);
     }
 };
 

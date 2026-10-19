@@ -31,7 +31,9 @@ const fileFilter = (req, file, cb) => {
     if (isValidMimeType && isValidExtension) {
         cb(null, true);
     } else {
-        cb(new Error("Please upload a JPG, JPEG, PNG, or WEBP image."));
+        const error = new Error("Please upload a JPG, JPEG, PNG, or WEBP image.");
+        error.statusCode = 400;
+        cb(error);
     }
 };
 

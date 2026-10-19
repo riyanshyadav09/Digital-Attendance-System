@@ -5,7 +5,7 @@ const User = require("../models/User");
 const axios = require("axios");
 const FormData = require("form-data");
 const { saveGroupPhoto, removeStoredImage } = require("../services/objectStorageService");
-const { getFaceServiceUrl } = require("../config/faceService");
+const { getFaceServiceUrl, getFaceServiceTimeoutMs } = require("../config/faceService");
 
 // ======================================================
 // CALCULATE DISTANCE BETWEEN TWO LOCATIONS
@@ -1493,7 +1493,7 @@ const recognizeGroupPhoto = async (req, res) => {
         const subject = await Subject.findById(subjectId)
             .populate(
                 "students",
-                "name email faceEmbedding"
+                "name email faceEmbedding faceEmbeddingModel"
             );
 
         if (!subject) {
@@ -1537,7 +1537,8 @@ const recognizeGroupPhoto = async (req, res) => {
         const studentsData = enrolledStudents.map(
             (student) => ({
                 studentId: student._id.toString(),
-                embedding: student.faceEmbedding
+                embedding: student.faceEmbedding,
+                embeddingModel: student.faceEmbeddingModel
             })
         );
 
@@ -1567,7 +1568,7 @@ const recognizeGroupPhoto = async (req, res) => {
                     "X-Face-Service-Token": process.env.FACE_SERVICE_TOKEN
                 },
                 maxBodyLength: Infinity,
-                timeout: 30000
+                timeout: getFaceServiceTimeoutMs()
             }
         );
 
@@ -1586,7 +1587,8 @@ const recognizeGroupPhoto = async (req, res) => {
                     "No enrolled students were recognized.",
                 facesDetected:
                     recognitionResult.facesDetected || 0,
-                recognizedStudents: []
+                recognizedStudents: [],
+                reEnrollmentRequiredCount: recognitionResult.incompatibleStudentCount || 0
             });
         }
 
@@ -1686,6 +1688,7 @@ const recognizeGroupPhoto = async (req, res) => {
                 recognitionResult.facesDetected || 0,
             recognizedCount:
                 recognizedStudents.length,
+            reEnrollmentRequiredCount: recognitionResult.incompatibleStudentCount || 0,
             attendance: attendanceResults
         });
 
@@ -1756,7 +1759,8 @@ const verifyStudentSelfie = async (studentId, file) => {
         JSON.stringify([
             {
                 studentId: studentId.toString(),
-                embedding: student.faceEmbedding
+                embedding: student.faceEmbedding,
+                embeddingModel: student.faceEmbeddingModel
             }
         ])
     );
@@ -1773,7 +1777,7 @@ const verifyStudentSelfie = async (studentId, file) => {
                     "X-Face-Service-Token": process.env.FACE_SERVICE_TOKEN
                 },
                 maxBodyLength: Infinity,
-                timeout: 20000
+                timeout: getFaceServiceTimeoutMs()
             }
         );
     } catch (error) {
