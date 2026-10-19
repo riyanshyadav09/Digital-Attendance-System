@@ -26,7 +26,8 @@ const enrollFaceImage = async (file, requestId = "untracked") => {
                 headers: {
                     ...formData.getHeaders(),
                     "X-Face-Service-Token": process.env.FACE_SERVICE_TOKEN,
-                    "X-Request-ID": requestId
+                    "X-Request-ID": requestId,
+                    "Bypass-Tunnel-Reminder": "true"
                 },
                 maxBodyLength: Infinity,
                 timeout

@@ -1565,7 +1565,8 @@ const recognizeGroupPhoto = async (req, res) => {
             {
                 headers: {
                     ...formData.getHeaders(),
-                    "X-Face-Service-Token": process.env.FACE_SERVICE_TOKEN
+                    "X-Face-Service-Token": process.env.FACE_SERVICE_TOKEN,
+                    "Bypass-Tunnel-Reminder": "true"
                 },
                 maxBodyLength: Infinity,
                 timeout: getFaceServiceTimeoutMs()
@@ -1774,7 +1775,8 @@ const verifyStudentSelfie = async (studentId, file) => {
             {
                 headers: {
                     ...formData.getHeaders(),
-                    "X-Face-Service-Token": process.env.FACE_SERVICE_TOKEN
+                    "X-Face-Service-Token": process.env.FACE_SERVICE_TOKEN,
+                    "Bypass-Tunnel-Reminder": "true"
                 },
                 maxBodyLength: Infinity,
                 timeout: getFaceServiceTimeoutMs()
